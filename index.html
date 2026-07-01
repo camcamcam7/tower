@@ -308,8 +308,13 @@ const TOWERS={
   nuke:  {name:"Nuke",          ic:"☢️", cost:10000,dmg:50000,rate:0,range:130, hint:"Scales w/ wave — ~2/3 of any boss. Destroys nearby weapons", mine:true, nukeScale:true},
   sentry:{name:"Sentry",        ic:"🛡️", cost:1600,dmg:100,rate:40.5,range:160, hint:"Quad-cylinder minigun — fastest fire rate alive"},
   tar:   {name:"Sticky Tar",    ic:"🛢️", cost:2000, dmg:0,  rate:0,   range:0,   hint:"Place ON the road — crawls zombies to ~8% speed (3× a maxed Arc Grid)", onroad:true, tarSlow:0.08},
+  // ---- Endgame super-weapons: unlock deep in the run, upgrade at wave milestones ----
+  plasma:{name:"Plasma Lance",  ic:"🔱", cost:8000,  dmg:8000000,  rate:3.0, range:300, hint:"Unlocks WAVE 130 · pierces a line · milestone upgrades every 5 waves", unlock:130, mega:true, pierce:true},
+  siege: {name:"Siege Howitzer",ic:"💥", cost:12000, dmg:120000000,rate:1.2, range:220, hint:"Unlocks WAVE 130 · colossal splash · milestone upgrades every 5 waves", unlock:130, mega:true, splash:130},
+  annih: {name:"Annihilator",   ic:"🌀", cost:25000, dmg:360000000,rate:2.0, range:1200,hint:"Unlocks WAVE 140 · devastating pierce beam · milestone upgrades every 5 waves", unlock:140, mega:true, fixed:true, pierce:true},
+  sing:  {name:"Singularity",   ic:"🕳️", cost:40000, dmg:370000000,rate:1.5, range:9999,hint:"Unlocks WAVE 140 · pulses the WHOLE map · milestone upgrades every 5 waves", unlock:140, mega:true, mapwide:true},
 };
-const ORDER=["mg","flame","sniper","tesla","rocket","hel","rail","sentry","tar","laser","nuke"];
+const ORDER=["mg","flame","sniper","tesla","rocket","hel","rail","sentry","tar","laser","plasma","siege","annih","sing","nuke"];
 // Linear upgrades — doubled from the original per-level gains. Levels 1-5 are
 // linear; the final level (6) is a special "MAX" tier that triples the Lv5 value,
 // so a fully-maxed weapon reaches 3x its previous ceiling for the late game.
@@ -333,6 +338,21 @@ function upMult(stat,lv){
 // upgrade levels unlock as you clear waves: level N is allowed after wave N*10.
 // (clear wave 10 -> level 1 unlocked, clear wave 20 -> level 2, ... wave 80 -> level 8)
 function unlockedLevel(){ return Math.min(MAXLVL, Math.floor((G?G.maxCleared:0)/10)); }
+// --- Endgame super-weapons: their own milestone-based upgrade track ---
+const MEGA_MAXLVL=16;              // plenty of headroom for very deep waves
+const MEGA_STEP=5;                 // a new milestone every 5 waves
+const MEGA_DMG=1.25, MEGA_RATE=1.20;  // per-level factors -> ~1.5x DPS/level (tracks boss HP curve)
+// mega upgrade level allowed = milestones cleared since the weapon's unlock wave
+function megaUnlockedLevel(key){
+  const u=TOWERS[key].unlock||0;
+  const cleared=G?G.maxCleared:0;
+  return Math.max(0, Math.min(MEGA_MAXLVL, Math.floor((cleared-u)/MEGA_STEP)+1));
+}
+// mega stat multiplier (dmg/rate compound per level; range steps gently, linear)
+function megaMult(stat,lv){
+  if(stat==="range") return 1+0.10*lv;
+  return Math.pow(stat==="dmg"?MEGA_DMG:MEGA_RATE, lv);
+}
 const ZTYPES={
   walker:{hp:42,  speed:42, bounty:8,  r:9,  lives:1,  scale:1.0, skin:0x7fae4a, cloth:0x4a4438},
   runner:{hp:26,  speed:92, bounty:11, r:7,  lives:1,  scale:0.85,skin:0xa8cf6e, cloth:0x59513f},
@@ -939,6 +959,52 @@ function makeTowerMesh(key){
       r.position.set(.06,.42,dz); head.add(r);
     }
     head.userData.muzzle=new THREE.Vector3(.55,.32,0);
+  }
+  else if(key==="plasma"){
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(.2,.26,.2,12),MAT.darkSteel);
+    base.position.y=.11; head.add(base);
+    const core=new THREE.Mesh(new THREE.SphereGeometry(.14,14,14),new THREE.MeshBasicMaterial({color:0x9d5cff}));
+    core.position.set(.05,.34,0); head.add(core);
+    const emitter=new THREE.Mesh(new THREE.CylinderGeometry(.06,.11,.4,10),MAT.gunmetal);
+    emitter.rotation.z=Math.PI/2; emitter.position.set(.34,.34,0); head.add(emitter);
+    const glow=makeSprite(TEX.fire,0xb06bff,.4); glow.position.set(.55,.34,0); head.add(glow);
+    for(const dz of[-.12,.12]){const p=new THREE.Mesh(new THREE.BoxGeometry(.22,.05,.04),Mat(0x6a3ab0));p.position.set(.1,.46,dz);head.add(p);}
+    head.userData.muzzle=new THREE.Vector3(.56,.34,0);
+  }
+  else if(key==="siege"){
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(.26,.32,.2,10),MAT.darkSteel);
+    base.position.y=.11; head.add(base);
+    const breech=new THREE.Mesh(new THREE.BoxGeometry(.34,.3,.36),MAT.gunmetal);
+    breech.position.set(-.02,.36,0); head.add(breech);
+    const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.15,.17,.6,14),MAT.barrel);
+    barrel.rotation.z=Math.PI/2; barrel.position.set(.42,.4,0); head.add(barrel);
+    const mouth=new THREE.Mesh(new THREE.CylinderGeometry(.19,.19,.1,14),MAT.darkSteel);
+    mouth.rotation.z=Math.PI/2; mouth.position.set(.72,.4,0); head.add(mouth);
+    head.userData.muzzle=new THREE.Vector3(.8,.4,0);
+  }
+  else if(key==="annih"){
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(.26,.34,.22,14),MAT.darkSteel);
+    base.position.y=.12; head.add(base);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.2,.05,10,20),new THREE.MeshBasicMaterial({color:0x30ffd0}));
+    ring.position.set(.28,.4,0); ring.rotation.y=Math.PI/2; head.add(ring);
+    const spine=new THREE.Mesh(new THREE.CylinderGeometry(.08,.14,.7,12),MAT.gunmetal);
+    spine.rotation.z=Math.PI/2; spine.position.set(.3,.4,0); head.add(spine);
+    const emitter=new THREE.Mesh(new THREE.SphereGeometry(.12,14,14),new THREE.MeshBasicMaterial({color:0x40ffe0}));
+    emitter.position.set(.6,.4,0); head.add(emitter);
+    const glow=makeSprite(TEX.fire,0x40ffe0,.5); glow.position.set(.64,.4,0); head.add(glow);
+    head.userData.muzzle=new THREE.Vector3(.64,.4,0);
+  }
+  else if(key==="sing"){
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(.28,.34,.2,16),MAT.darkSteel);
+    base.position.y=.11; head.add(base);
+    const pillar=new THREE.Mesh(new THREE.CylinderGeometry(.1,.16,.5,12),MAT.gunmetal);
+    pillar.position.set(0,.4,0); head.add(pillar);
+    const orb=new THREE.Mesh(new THREE.SphereGeometry(.18,18,18),new THREE.MeshBasicMaterial({color:0x1a0030}));
+    orb.position.set(0,.72,0); head.add(orb);
+    const halo=new THREE.Mesh(new THREE.TorusGeometry(.24,.035,10,24),new THREE.MeshBasicMaterial({color:0xb060ff}));
+    halo.position.set(0,.72,0); halo.rotation.x=Math.PI/2.4; head.add(halo);
+    const glow=makeSprite(TEX.flash,0xb060ff,.5); glow.position.set(0,.72,0); head.add(glow);
+    head.userData.muzzle=new THREE.Vector3(0,.72,0);
   }
   grp.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
   return grp;
@@ -1933,15 +1999,25 @@ function removeZombieMesh(z){
 /* ---- towers ---- */
 function towerStats(t){
   const B=TOWERS[t.key];
+  if(B.mega){
+    return {dmg:B.dmg*megaMult("dmg",t.lv.dmg),
+            rate:B.rate*megaMult("rate",t.lv.rate),
+            range:B.range*megaMult("range",t.lv.range)};
+  }
   return {dmg:B.dmg*upMult("dmg",t.lv.dmg),
           rate:B.rate*upMult("rate",t.lv.rate),
           range:B.range*upMult("range",t.lv.range)};
 }
 function upCost(t,stat){
   const lv=t.lv[stat];
+  const B=TOWERS[t.key];
+  if(B.mega){
+    // mega upgrades cost a growing fraction of the (already large) base price
+    return Math.round(B.cost*0.6*Math.pow(1.45,lv));
+  }
   // the final tier (Lv5 -> Lv6) is a bigger jump, but priced moderately (2.5x a normal step)
   const tierMult = lv>=LINMAX ? 2.5 : 1;
-  return Math.round(TOWERS[t.key].cost*0.55*(lv+1)*tierMult);
+  return Math.round(B.cost*0.55*(lv+1)*tierMult);
 }
 function placeTower(cx,cy){
   const B=TOWERS[G.buildKey];
@@ -2132,6 +2208,59 @@ function fireTower(t,dt){
       flashLight.position.copy(mz); flashLight.intensity=4.5;
       flashLight.color.set(0xffc070);
     }
+  }
+  else if(key==="plasma"){
+    const ux=Math.cos(t.aim), uy=Math.sin(t.aim);
+    const endW=new THREE.Vector3(wx(t.x+ux*st.range),.5,wz(t.y+uy*st.range));
+    for(const z of G.zombies){
+      if(z.dead)continue;
+      const px=z.x-t.x, py=z.y-t.y;
+      const proj=px*ux+py*uy;
+      if(proj<0||proj>st.range)continue;
+      const perp=Math.abs(-uy*px+ux*py);
+      if(perp<18+z.r*.4){
+        if(perfLevel===0)fxSprite({tex:TEX.fire,color:0x9d5cff,x:zWorld(z,.5).x,y:zWorld(z,.5).y,z:zWorld(z,.5).z,scale:.5,life:.18,grow:1.6});
+        damage(z,st.dmg,t);
+      }
+    }
+    fxTracer(mz,endW,0xb06bff,.24,.08);
+    if(perfLevel<2)fxTracer(mz,endW,0xe8d0ff,.2,.03);
+    fxSprite({tex:TEX.flash,color:0xc08cff,x:mz.x,y:mz.y,z:mz.z,scale:.7,life:.12,grow:1.6});
+    flashLight.position.copy(mz); flashLight.intensity=14; flashLight.color.set(0x9d5cff);
+  }
+  else if(key==="siege"){
+    const sp=TOWERS.siege.splash*(1+0.06*t.lv.range);
+    explosion(tgt.x,tgt.y,sp,true);
+    for(const z of G.zombies){if(z.dead)continue;const dd=Math.hypot(z.x-tgt.x,z.y-tgt.y);if(dd<sp)damage(z,st.dmg*(1-dd/sp*.4),t);}
+    const hw=zWorld(tgt,.4);
+    fxTracer(mz,hw,0xffd0a0,.18,.05);
+    flashLight.position.copy(hw); flashLight.intensity=15; flashLight.color.set(0xff8a30);
+  }
+  else if(key==="annih"){
+    const ux=Math.cos(t.aim), uy=Math.sin(t.aim);
+    const endW=new THREE.Vector3(wx(t.x+ux*st.range),.5,wz(t.y+uy*st.range));
+    for(const z of G.zombies){
+      if(z.dead)continue;
+      const px=z.x-t.x, py=z.y-t.y;
+      const proj=px*ux+py*uy;
+      if(proj<0||proj>st.range)continue;
+      const perp=Math.abs(-uy*px+ux*py);
+      if(perp<22+z.r*.4){
+        if(perfLevel===0)fxSprite({tex:TEX.fire,color:0x40ffe0,x:zWorld(z,.5).x,y:zWorld(z,.5).y,z:zWorld(z,.5).z,scale:.55,life:.2,grow:1.7});
+        damage(z,st.dmg,t);
+      }
+    }
+    fxTracer(mz,endW,0x30ffd0,.3,.1);
+    if(perfLevel<2)fxTracer(mz,endW,0xd0fff5,.24,.04);
+    fxSprite({tex:TEX.fire,color:0x40ffe0,x:mz.x,y:mz.y,z:mz.z,scale:.9,life:.2,grow:1.7});
+    flashLight.position.copy(mz); flashLight.intensity=18; flashLight.color.set(0x30ffd0);
+  }
+  else if(key==="sing"){
+    for(const z of G.zombies){ if(!z.dead) damage(z,st.dmg,t); }
+    const c=new THREE.Vector3(wx(t.x),.4,wz(t.y));
+    if(perfLevel<2){fxShockwave(c.x,c.z,6,.6,0xb060ff); fxShockwave(c.x,c.z,10,.5,0x8040ff);}
+    fxSprite({tex:TEX.flash,color:0xc080ff,x:c.x,y:.6,z:c.z,scale:1.4,life:.22,grow:2.2});
+    flashLight.position.copy(c); flashLight.intensity=20; flashLight.color.set(0xb060ff);
   }
   else if(key==="hel"){
     damage(tgt,st.dmg,t);
@@ -2854,11 +2983,13 @@ function renderCards(){
   avail.forEach((k,i)=>{
     const T=TOWERS[k];
     const b=document.createElement('button');
-    b.className="card"+(G.buildKey===k?" armed":"")+(G.money<T.cost?" broke":"");    const dShow=T.dmg>=1000?(T.dmg/1000)+"k":T.dmg;
+    b.className="card"+(G.buildKey===k?" armed":"")+(G.money<T.cost?" broke":"");    const dShow=T.dmg>=1e6?(T.dmg/1e6).toFixed(0)+"M":T.dmg>=1000?(T.dmg/1000)+"k":T.dmg;
     const stLine = k==="tesla"
       ? `SLOW <b>${Math.round((1-T.slow)*100)}%</b> · RNG <b>${T.range}</b> · <b>${T.rate}</b>/s`
       : k==="tar"
       ? `SLOW <b>${Math.round((1-T.tarSlow)*100)}%</b> · ON ROAD · <b>per tile</b>`
+      : T.mega
+      ? `DMG <b>${dShow}</b> · ${T.mapwide?"<b>whole map</b>":T.fixed?"<b>fixed pierce</b>":T.splash?"<b>splash</b>":"<b>pierce</b>"} · <b>${T.rate}</b>/s`
       : k==="nuke"
       ? `DMG <b>⅔ boss</b> · BLAST <b>${T.range}</b> · <b>1-use</b>`
       : k==="laser"
@@ -2932,18 +3063,28 @@ function showSel(){
     document.getElementById('selStats').innerHTML = core
       + `<div>DAMAGE GIVEN<b>${dealtStr}</b></div>`;
   }
-  // upgrade buttons act on the whole set (only towers that can still upgrade that stat)
-  const unlocked=unlockedLevel();
+  // upgrade buttons act on the whole set. Normal weapons cap at MAXLVL and unlock a
+  // level per 10 waves; mega (endgame) weapons cap at MEGA_MAXLVL and unlock a level
+  // per 5 waves past their unlock wave.
+  const capOf=x=>TOWERS[x.key].mega?MEGA_MAXLVL:MAXLVL;
+  const unlockOf=x=>TOWERS[x.key].mega?megaUnlockedLevel(x.key):unlockedLevel();
+  const nextWaveOf=x=>TOWERS[x.key].mega
+      ? (TOWERS[x.key].unlock + x.lv.dmg*MEGA_STEP)   // approx next milestone (dmg track)
+      : (x.lv.dmg+1)*10;
   [["upDmg","dmg"],["upRate","rate"],["upRange","range"]].forEach(([id,stat])=>{
     const b=document.getElementById(id);
-    const targets=set.filter(x=>x.lv[stat]<MAXLVL && x.lv[stat]<unlocked && !TOWERS[x.key].mine);
+    const targets=set.filter(x=>x.lv[stat]<capOf(x) && x.lv[stat]<unlockOf(x) && !TOWERS[x.key].mine);
     const cost=targets.reduce((s,x)=>s+upCost(x,stat),0);
     const label=(t.key==="tesla"&&stat==="dmg"&&!multi)?"SLOW POWER":UP[stat].label;
-    const lvTxt=multi?`×${targets.length}`:(t.lv[stat]===LINMAX?`→MAX`:`Lv ${t.lv[stat]}/${MAXLVL}`);
-    const fullyMaxed=set.every(x=>x.lv[stat]>=MAXLVL||TOWERS[x.key].mine);
-    // gated: every selected tower has hit the current wave-unlock ceiling but not the true max
+    const isMega=TOWERS[t.key].mega;
+    const capT=capOf(t);
+    const lvTxt=multi?`×${targets.length}`:(!isMega&&t.lv[stat]===LINMAX?`→MAX`:`Lv ${t.lv[stat]}/${capT}`);
+    const fullyMaxed=set.every(x=>x.lv[stat]>=capOf(x)||TOWERS[x.key].mine);
     const gated=!fullyMaxed && targets.length===0;
-    const nextWaveNeeded=(Math.min(...set.map(x=>x.lv[stat]))+1)*10;
+    // next milestone wave needed (use the primary selected tower for the hint)
+    const nextWaveNeeded = isMega
+      ? TOWERS[t.key].unlock + Math.min(...set.filter(x=>TOWERS[x.key].mega).map(x=>x.lv[stat]))*MEGA_STEP
+      : (Math.min(...set.map(x=>x.lv[stat]))+1)*10;
     b.className="upBtn"+(fullyMaxed?" maxed":"")+(gated?" locked":"");
     b.disabled=fullyMaxed||gated||G.money<cost||targets.length===0;
     b.innerHTML=fullyMaxed
@@ -2953,10 +3094,9 @@ function showSel(){
       :`<span>+ ${label} <span class="lvl">${lvTxt}</span></span><span class="pc">${fmt(cost)}</span>`;
     b.onclick=()=>{
       if(gated||fullyMaxed)return;
-      // buy this stat for every selected tower that can afford it, in turn
       let any=false;
       for(const x of set){
-        if(x.lv[stat]>=MAXLVL||x.lv[stat]>=unlocked||TOWERS[x.key].mine)continue;
+        if(x.lv[stat]>=capOf(x)||x.lv[stat]>=unlockOf(x)||TOWERS[x.key].mine)continue;
         const c=upCost(x,stat); if(G.money<c)break;
         G.money-=c; x.spent+=c; x.lv[stat]++;
         x.cd=Math.min(x.cd,1/towerStats(x).rate);
