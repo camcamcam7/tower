@@ -308,13 +308,12 @@ const TOWERS={
   nuke:  {name:"Nuke",          ic:"☢️", cost:10000,dmg:50000,rate:0,range:130, hint:"Scales w/ wave — ~2/3 of any boss. Destroys nearby weapons", mine:true, nukeScale:true},
   sentry:{name:"Sentry",        ic:"🛡️", cost:1600,dmg:100,rate:40.5,range:160, hint:"Quad-cylinder minigun — fastest fire rate alive"},
   tar:   {name:"Sticky Tar",    ic:"🛢️", cost:2000, dmg:0,  rate:0,   range:0,   hint:"Place ON the road — crawls zombies to ~8% speed (3× a maxed Arc Grid)", onroad:true, tarSlow:0.08},
-  // ---- Endgame super-weapons: unlock deep in the run, upgrade at wave milestones ----
-  plasma:{name:"Plasma Lance",  ic:"🔱", cost:8000,  dmg:8000000,  rate:3.0, range:300, hint:"Unlocks WAVE 130 · pierces a line · milestone upgrades every 5 waves", unlock:130, mega:true, pierce:true},
-  siege: {name:"Siege Howitzer",ic:"💥", cost:12000, dmg:120000000,rate:1.2, range:220, hint:"Unlocks WAVE 130 · colossal splash · milestone upgrades every 5 waves", unlock:130, mega:true, splash:130},
-  annih: {name:"Annihilator",   ic:"🌀", cost:25000, dmg:360000000,rate:2.0, range:1200,hint:"Unlocks WAVE 140 · devastating pierce beam · milestone upgrades every 5 waves", unlock:140, mega:true, fixed:true, pierce:true},
-  sing:  {name:"Singularity",   ic:"🕳️", cost:40000, dmg:370000000,rate:1.5, range:9999,hint:"Unlocks WAVE 140 · pulses the WHOLE map · milestone upgrades every 5 waves", unlock:140, mega:true, mapwide:true},
+  // ---- Endgame super-weapons: appear every 20 waves, upgrade every 10 waves (5 levels) ----
+  plasma:{name:"Plasma Lance",  ic:"🔱", cost:8000,  dmg:60000000, rate:3.0, range:300, hint:"Unlocks WAVE 130 · pierces a line · upgrades every 10 waves", unlock:130, mega:true, pierce:true},
+  siege: {name:"Siege Howitzer",ic:"💥", cost:12000, dmg:220000000,rate:1.2, range:220, hint:"Unlocks WAVE 150 · colossal splash · upgrades every 10 waves", unlock:150, mega:true, splash:130},
+  annih: {name:"Annihilator",   ic:"🌀", cost:25000, dmg:700000000,rate:2.0, range:1200,hint:"Unlocks WAVE 170 · devastating pierce beam · upgrades every 10 waves", unlock:170, mega:true, fixed:true, pierce:true},
 };
-const ORDER=["mg","flame","sniper","tesla","rocket","hel","rail","sentry","tar","laser","plasma","siege","annih","sing","nuke"];
+const ORDER=["mg","flame","sniper","tesla","rocket","hel","rail","sentry","tar","laser","plasma","siege","annih","nuke"];
 // Linear upgrades — doubled from the original per-level gains. Levels 1-5 are
 // linear; the final level (6) is a special "MAX" tier that triples the Lv5 value,
 // so a fully-maxed weapon reaches 3x its previous ceiling for the late game.
@@ -339,14 +338,14 @@ function upMult(stat,lv){
 // (clear wave 10 -> level 1 unlocked, clear wave 20 -> level 2, ... wave 80 -> level 8)
 function unlockedLevel(){ return Math.min(MAXLVL, Math.floor((G?G.maxCleared:0)/10)); }
 // --- Endgame super-weapons: their own milestone-based upgrade track ---
-const MEGA_MAXLVL=16;              // plenty of headroom for very deep waves
-const MEGA_STEP=5;                 // a new milestone every 5 waves
-const MEGA_DMG=1.25, MEGA_RATE=1.20;  // per-level factors -> ~1.5x DPS/level (tracks boss HP curve)
+const MEGA_MAXLVL=5;               // 5 upgrade levels each
+const MEGA_STEP=10;                // a new upgrade level every 10 waves cleared
+const MEGA_DMG=1.6, MEGA_RATE=1.4;    // per-level factors -> ~2.24x DPS/level (tracks boss HP curve)
 // mega upgrade level allowed = milestones cleared since the weapon's unlock wave
 function megaUnlockedLevel(key){
   const u=TOWERS[key].unlock||0;
   const cleared=G?G.maxCleared:0;
-  return Math.max(0, Math.min(MEGA_MAXLVL, Math.floor((cleared-u)/MEGA_STEP)+1));
+  return Math.max(0, Math.min(MEGA_MAXLVL, Math.floor((cleared-u)/MEGA_STEP)));
 }
 // mega stat multiplier (dmg/rate compound per level; range steps gently, linear)
 function megaMult(stat,lv){
@@ -994,21 +993,10 @@ function makeTowerMesh(key){
     const glow=makeSprite(TEX.fire,0x40ffe0,.5); glow.position.set(.64,.4,0); head.add(glow);
     head.userData.muzzle=new THREE.Vector3(.64,.4,0);
   }
-  else if(key==="sing"){
-    const base=new THREE.Mesh(new THREE.CylinderGeometry(.28,.34,.2,16),MAT.darkSteel);
-    base.position.y=.11; head.add(base);
-    const pillar=new THREE.Mesh(new THREE.CylinderGeometry(.1,.16,.5,12),MAT.gunmetal);
-    pillar.position.set(0,.4,0); head.add(pillar);
-    const orb=new THREE.Mesh(new THREE.SphereGeometry(.18,18,18),new THREE.MeshBasicMaterial({color:0x1a0030}));
-    orb.position.set(0,.72,0); head.add(orb);
-    const halo=new THREE.Mesh(new THREE.TorusGeometry(.24,.035,10,24),new THREE.MeshBasicMaterial({color:0xb060ff}));
-    halo.position.set(0,.72,0); halo.rotation.x=Math.PI/2.4; head.add(halo);
-    const glow=makeSprite(TEX.flash,0xb060ff,.5); glow.position.set(0,.72,0); head.add(glow);
-    head.userData.muzzle=new THREE.Vector3(0,.72,0);
-  }
   grp.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
   return grp;
 }
+/* REMOVED: Singularity weapon (was too powerful) */
 
 /* ============================================================
    Zombie meshes
@@ -2254,13 +2242,6 @@ function fireTower(t,dt){
     if(perfLevel<2)fxTracer(mz,endW,0xd0fff5,.24,.04);
     fxSprite({tex:TEX.fire,color:0x40ffe0,x:mz.x,y:mz.y,z:mz.z,scale:.9,life:.2,grow:1.7});
     flashLight.position.copy(mz); flashLight.intensity=18; flashLight.color.set(0x30ffd0);
-  }
-  else if(key==="sing"){
-    for(const z of G.zombies){ if(!z.dead) damage(z,st.dmg,t); }
-    const c=new THREE.Vector3(wx(t.x),.4,wz(t.y));
-    if(perfLevel<2){fxShockwave(c.x,c.z,6,.6,0xb060ff); fxShockwave(c.x,c.z,10,.5,0x8040ff);}
-    fxSprite({tex:TEX.flash,color:0xc080ff,x:c.x,y:.6,z:c.z,scale:1.4,life:.22,grow:2.2});
-    flashLight.position.copy(c); flashLight.intensity=20; flashLight.color.set(0xb060ff);
   }
   else if(key==="hel"){
     damage(tgt,st.dmg,t);
