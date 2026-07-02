@@ -132,6 +132,19 @@
   .buildBar button{padding:7px 12px; font-size:11px;}
   #keepBtn.on{border-color:var(--amber); color:var(--amber-hot); background:#241c0e;}
   #cancelBuildBtn{color:var(--red); border-color:#4a2a2a;}
+  .placeConfirm{
+    position:absolute; left:50%; bottom:70px; transform:translateX(-50%); z-index:6;
+    display:flex; flex-direction:column; gap:7px; align-items:center;
+    background:rgba(14,19,26,.96); border:1px solid var(--amber); border-radius:12px;
+    padding:10px 12px; box-shadow:0 12px 34px rgba(0,0,0,.6);
+  }
+  .placeConfirm .pcLabel{font-family:Consolas,monospace; font-size:11px; letter-spacing:1px;
+    color:var(--amber-hot); font-weight:700;}
+  .placeConfirm .pcRow{display:flex; gap:8px;}
+  .placeConfirm button{padding:10px 16px; font-size:13px; font-weight:700;}
+  .placeConfirm .pcOk{border-color:var(--green); color:var(--green); background:#12240e;}
+  .placeConfirm #pcCancel{color:var(--red); border-color:#4a2a2a;}
+  .placeConfirm #pcRotate{border-color:var(--amber); color:var(--amber-hot);}
   #infoBtn{width:36px; padding:9px 0; text-align:center; font-size:14px;
     border-radius:50%; color:var(--amber-hot);}
   #autoBtn.on{border-color:var(--amber); color:var(--amber-hot); background:#241c0e;}
@@ -202,6 +215,14 @@
         <div class="selFoot">
           <button id="sellBtn"></button>
           <button id="deselBtn">CLOSE</button>
+        </div>
+      </div>
+      <div class="placeConfirm hidden" id="placeConfirm">
+        <div class="pcLabel" id="pcLabel">PLACE HERE?</div>
+        <div class="pcRow">
+          <button id="pcRotate" class="hidden">⟳ ROTATE</button>
+          <button id="pcConfirm" class="pcOk">CONFIRM</button>
+          <button id="pcCancel">CANCEL</button>
         </div>
       </div>
       <div class="overlay hidden" id="gameOver">
@@ -1314,6 +1335,7 @@ function freshState(keepMap, forceLayout){
   FX.length=0;
   buildWorld();
   panX=0; panZ=0;
+  if(typeof hidePlaceConfirm==="function")hidePlaceConfirm();
   setZoom(1);     // reset to the fit-framed view for the (possibly resized) grid
   syncHUD(); renderCards(); hideSel();
   document.getElementById('gameOver').classList.add('hidden');
@@ -2824,7 +2846,56 @@ function tapAt(clientX,clientY,modifier){
   }
   if(G.selSet.length)showSel(); else hideSel();
 }
-function cancelBuild(){G.buildKey=null;ghost.visible=false;ghostRing.visible=false;ghostBeam.visible=false;renderCards();}
+function cancelBuild(){G.buildKey=null;ghost.visible=false;ghostRing.visible=false;ghostBeam.visible=false;renderCards();hidePlaceConfirm();}
+
+/* ---- two-step touch placement: show a ghost + Confirm/Cancel/Rotate before committing ---- */
+let pendingPlace=null;   // {cx,cy} awaiting confirmation
+function showPlaceConfirm(cx,cy){
+  pendingPlace={cx,cy};
+  // keep the ghost visible at the chosen cell as a placeholder
+  const B=TOWERS[G.buildKey];
+  const box=document.getElementById('placeConfirm');
+  document.getElementById('pcLabel').textContent="PLACE "+B.name.toUpperCase()+"?";
+  document.getElementById('pcRotate').classList.toggle('hidden',!B.fixed);
+  box.classList.remove('hidden');
+}
+function hidePlaceConfirm(){
+  pendingPlace=null;
+  document.getElementById('placeConfirm').classList.add('hidden');
+}
+function confirmPlace(){
+  if(!pendingPlace)return;
+  const {cx,cy}=pendingPlace;
+  if(canBuild(cx,cy)){
+    placeTower(cx,cy);
+    if(!G.multiPlace){G.buildKey=null;renderCards();}
+  }else toast("CAN'T BUILD HERE");
+  hidePlaceConfirm();
+  if(!G.multiPlace){ghost.visible=false;ghostRing.visible=false;ghostBeam.visible=false;}
+}
+document.getElementById('pcConfirm').onclick=confirmPlace;
+document.getElementById('pcCancel').onclick=()=>{hidePlaceConfirm();ghost.visible=false;ghostRing.visible=false;ghostBeam.visible=false;};
+document.getElementById('pcRotate').onclick=()=>{ rotatePlace(1); if(pendingPlace)showGhostAtCell(pendingPlace.cx,pendingPlace.cy); };
+// position the ghost at a specific cell (used while the confirm popup is open)
+function showGhostAtCell(cx,cy){
+  const ok=canBuild(cx,cy);
+  ghost.visible=true;
+  ghost.material.color.setHex(ok?0x7fd13b:0xff5d5d);
+  const gx=wx(cx*CELL+CELL/2), gz=wz(cy*CELL+CELL/2);
+  ghost.position.set(gx,.02,gz);
+  const B=TOWERS[G.buildKey];
+  if(B.fixed){
+    ghostRing.visible=false; ghostBeam.visible=true;
+    const len=B.range/CELL, ux=Math.cos(G.placeAim), uy=Math.sin(G.placeAim);
+    const pos=ghostBeam.geometry.attributes.position;
+    pos.setXYZ(0,gx,0,gz); pos.setXYZ(1,gx+ux*len,0,gz+uy*len); pos.needsUpdate=true;
+  }else{
+    ghostBeam.visible=false; ghostRing.visible=true;
+    ghostRing.position.set(gx,.03,gz);
+    ghostRing.scale.setScalar(B.range/CELL);
+  }
+}
+
 
 glCv.addEventListener('mousemove',e=>showGhostAt(e.clientX,e.clientY));
 glCv.addEventListener('mouseleave',()=>{ghost.visible=false;ghostRing.visible=false;ghostBeam.visible=false;});
@@ -2894,6 +2965,12 @@ glCv.addEventListener('touchstart',e=>{
   const t=e.touches[0];
   touchStart={x:t.clientX,y:t.clientY,time:performance.now()};
   touchMoved=false;
+  if(pendingPlace){
+    // popup is open: a touch on the map just re-aims the placeholder (buttons handle commit)
+    const p=pickGroundXY(t.clientX,t.clientY);
+    if(p){const cx=Math.floor(p.px/CELL),cy=Math.floor(p.py/CELL);pendingPlace={cx,cy};showGhostAtCell(cx,cy);}
+    return;
+  }
   if(G.buildKey)showGhostAt(t.clientX,t.clientY);  // live preview while finger is down
 },{passive:true});
 glCv.addEventListener('touchmove',e=>{
@@ -2913,18 +2990,39 @@ glCv.addEventListener('touchmove',e=>{
   if(e.touches.length!==1||!touchStart)return;
   const t=e.touches[0];
   if(Math.hypot(t.clientX-touchStart.x,t.clientY-touchStart.y)>12)touchMoved=true;
+  if(pendingPlace){
+    // dragging while the confirm popup is open re-positions the placeholder
+    const p=pickGroundXY(t.clientX,t.clientY);
+    if(p){const cx=Math.floor(p.px/CELL),cy=Math.floor(p.py/CELL);
+      pendingPlace={cx,cy}; showGhostAtCell(cx,cy);}
+    e.preventDefault(); return;
+  }
   if(G.buildKey){showGhostAt(t.clientX,t.clientY); e.preventDefault();}
 },{passive:false});
 glCv.addEventListener('touchend',e=>{
+  if(pendingPlace){ touchStart=null; e.preventDefault(); return; }  // popup open: buttons commit
   if(!touchStart)return;
   const dt=performance.now()-touchStart.time;
-  // a quick stationary touch = a tap; multi-tap-place handled by the build mode flag.
-  // when not building, an existing selection makes further taps additive (multi-select).
   if(!touchMoved&&dt<500){
-    const modifier = G.buildKey ? G.multiPlace : (G.selSet.length>0);
-    tapAt(touchStart.x,touchStart.y,modifier);
+    if(G.buildKey){
+      // TOUCH PLACEMENT IS TWO-STEP: pick the cell, then Confirm/Cancel (never place instantly)
+      const p=pickGroundXY(touchStart.x,touchStart.y);
+      if(p){
+        const cx=Math.floor(p.px/CELL), cy=Math.floor(p.py/CELL);
+        if(canBuild(cx,cy)){ showGhostAtCell(cx,cy); showPlaceConfirm(cx,cy); }
+        else toast("CAN'T BUILD HERE");
+      }
+    }else{
+      // not building: a plain tap. If a weapon popup is open, tapping empty space
+      // (not a tower) closes it; tapping a tower selects it.
+      const p=pickGroundXY(touchStart.x,touchStart.y);
+      let hitTower=false;
+      if(p)for(const t of G.towers)if(Math.abs(p.px-t.x)<24&&Math.abs(p.py-t.y)<24)hitTower=true;
+      const hadSelection=G.selSet.length>0;
+      const modifier = hadSelection && hitTower;   // add to set only when tapping another tower
+      tapAt(touchStart.x,touchStart.y,modifier);
+    }
   }
-  if(G.buildKey&&!G.multiPlace){ghost.visible=false;ghostRing.visible=false;ghostBeam.visible=false;}
   touchStart=null; pinchDist=0;
   e.preventDefault();
 },{passive:false});
@@ -3151,7 +3249,9 @@ document.getElementById('mapSizeBtn').onclick=function(){
   this.textContent="SIZE: "+mapSizeFilter.toUpperCase();
 };
 document.getElementById('mapBtn').onclick=()=>{
-  if(G.inWave&&!confirm("Abandon the current run and generate a new map?"))return;
+  // ask for confirmation if the run has ANY progress (waves cleared, towers built, or mid-wave)
+  const hasProgress = G.inWave || G.wave>0 || G.maxCleared>0 || G.towers.length>0 || G.mines.length>0 || (G.tar&&G.tar.length>0);
+  if(hasProgress && !confirm("Start a new map? Your current run and all placed weapons will be lost.")) return;
   freshState(false);
 };
 document.getElementById('retryBtn').onclick=()=>freshState(true);
